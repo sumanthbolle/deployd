@@ -1,0 +1,6 @@
+apiVersion: v2
+name: deployd
+description: A small deployment control plane (gRPC + REST API, PostgreSQL work queue, rolling updates with automatic rollback).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

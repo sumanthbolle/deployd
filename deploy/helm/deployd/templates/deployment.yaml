@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "deployd.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: {{- include "deployd.selector" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: {{- include "deployd.selector" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: deployd
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: ops
+              containerPort: 9090
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          env:
+            - { name: DEPLOYD_LOG_LEVEL, value: {{ .Values.config.logLevel | quote }} }
+            - { name: DEPLOYD_WORKERS, value: {{ .Values.config.workers | quote }} }
+            - { name: DEPLOYD_MAX_SURGE, value: {{ .Values.config.maxSurge | quote }} }
+            - { name: DEPLOYD_FAILURE_THRESHOLD, value: {{ .Values.config.failureThreshold | quote }} }
+            {{- if .Values.tls.enabled }}
+            - { name: DEPLOYD_TLS_CERT, value: /etc/deployd/tls/tls.crt }
+            - { name: DEPLOYD_TLS_KEY, value: /etc/deployd/tls/tls.key }
+            {{- if .Values.tls.requireClientCert }}
+            - { name: DEPLOYD_CLIENT_CA, value: /etc/deployd/tls/ca.crt }
+            {{- end }}
+            {{- end }}
+          # Probes use the plain-HTTP ops port, which works even when the API
+          # port requires client certificates. Liveness only checks the process; readiness also checks the
+          # database, so a pod that loses PostgreSQL leaves the load balancer
+          # without being restarted in a loop.
+          livenessProbe:
+            httpGet: { path: /healthz, port: ops }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: ops }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/deployd/tls
+              readOnly: true
+          {{- end }}
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+      {{- end }}

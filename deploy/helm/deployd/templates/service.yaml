@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "deployd.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector: {{- include "deployd.selector" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      # gRPC runs over HTTP/2; this hint lets L7 proxies pick the right protocol.
+      appProtocol: {{ if .Values.tls.enabled }}https{{ else }}kubernetes.io/h2c{{ end }}
+    - name: ops
+      port: 9090
+      targetPort: ops
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "deployd.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "deployd.selector" . | nindent 6 }}
+{{- if .Values.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "deployd.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "deployd.selector" . | nindent 6 }}
+  endpoints:
+    - port: ops
+      path: /metrics
+      interval: 15s
+{{- end }}

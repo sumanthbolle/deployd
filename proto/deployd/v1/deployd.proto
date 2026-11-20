@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package deployd.v1;
+
+option go_package = "github.com/sumanthbolle/deployd/gen/deployd/v1;deploydv1";
+
+// DeployService is the control-plane API. Clients declare the state they want
+// (an image and a replica count); the reconciler drives the running state
+// toward it in the background.
+service DeployService {
+  // CreateService registers a new service and starts its first rollout.
+  rpc CreateService(CreateServiceRequest) returns (CreateServiceResponse);
+  // UpdateService changes the desired image and/or replica count.
+  // A new image starts a rolling update; a broken image is rolled back.
+  rpc UpdateService(UpdateServiceRequest) returns (UpdateServiceResponse);
+  // GetService returns desired state, running instances and the latest rollout.
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+  // ListServices returns all services, ordered by name.
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  // ListRollouts returns the rollout history of one service, newest first.
+  rpc ListRollouts(ListRolloutsRequest) returns (ListRolloutsResponse);
+}
+
+message Service {
+  string name = 1;
+  string image = 2;
+  int32 replicas = 3;
+  // generation increases on every change to the desired state.
+  int64 generation = 4;
+  // observed_generation is the last generation the reconciler fully applied.
+  int64 observed_generation = 5;
+  // status is one of: Progressing, Ready, Degraded.
+  string status = 6;
+  string updated_at = 7;
+}
+
+message Instance {
+  int64 id = 1;
+  string image = 2;
+  bool healthy = 3;
+  string created_at = 4;
+}
+
+message Rollout {
+  int64 id = 1;
+  string from_image = 2;
+  string to_image = 3;
+  // state is one of: InProgress, Succeeded, RolledBack.
+  string state = 4;
+  int32 failed_checks = 5;
+  string created_at = 6;
+  string finished_at = 7;
+}
+
+message CreateServiceRequest {
+  string name = 1;
+  string image = 2;
+  int32 replicas = 3;
+}
+
+message CreateServiceResponse {
+  Service service = 1;
+}
+
+message UpdateServiceRequest {
+  string name = 1;
+  // Empty image means "keep the current image".
+  string image = 2;
+  // Zero replicas means "keep the current replica count".
+  int32 replicas = 3;
+}
+
+message UpdateServiceResponse {
+  Service service = 1;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message GetServiceResponse {
+  Service service = 1;
+  repeated Instance instances = 2;
+  Rollout latest_rollout = 3;
+}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  repeated Service services = 1;
+}
+
+message ListRolloutsRequest {
+  string name = 1;
+}
+
+message ListRolloutsResponse {
+  repeated Rollout rollouts = 1;
+}
